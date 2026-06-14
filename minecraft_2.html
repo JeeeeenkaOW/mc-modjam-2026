@@ -1,0 +1,584 @@
+<!-- Minecraft-style voxel world. First-person, surface-collision, world switcher, whole-world retexture, skin loader. -->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Voxel World</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { height:100%; overflow:hidden; background:#000;
+    font-family:"Courier New",monospace; -webkit-user-select:none; user-select:none; }
+  canvas { display:block; }
+  #c { position:fixed; inset:0; cursor:default; }
+
+  /* ---- shared Minecraft GUI vernacular ---- */
+  .mc-text { color:#fff; text-shadow:2px 2px 0 #3f3f3f; letter-spacing:1px;
+    text-transform:uppercase; font-weight:bold; }
+  .mc-btn {
+    font-family:inherit; font-weight:bold; text-transform:uppercase; letter-spacing:1px;
+    color:#e8e8e8; text-shadow:2px 2px 0 #2a2a2a; cursor:pointer;
+    background:#8b8b8b;
+    border:2px solid; border-color:#b6b6b6 #2c2c2c #2c2c2c #b6b6b6;
+    box-shadow:inset -2px -2px 0 #5a5a5a, inset 2px 2px 0 #6f6f6f;
+    padding:7px 10px; image-rendering:pixelated; transition:none;
+  }
+  .mc-btn:hover { background:#6e8a5a; border-color:#a9c98c #243018 #243018 #a9c98c;
+    box-shadow:inset -2px -2px 0 #43562f, inset 2px 2px 0 #5a7340; }
+  .mc-btn.sel { background:#5f7d49; border-color:#bfe0a0 #1f2a14 #1f2a14 #bfe0a0; }
+  .mc-btn:active { box-shadow:inset 2px 2px 0 #5a5a5a, inset -2px -2px 0 #6f6f6f; }
+
+  /* ---- top-left control panel ---- */
+  #panel { position:fixed; top:12px; left:12px; z-index:50; display:flex; flex-direction:column; gap:8px;
+    background:rgba(20,18,16,.66); padding:12px; border:2px solid #000;
+    box-shadow:inset 0 0 0 2px #4a4a4a; max-width:230px; }
+  #panel .lbl { font-size:11px; }
+  .row { display:flex; gap:6px; flex-wrap:wrap; }
+  .row .mc-btn { flex:1; min-width:60px; font-size:11px; padding:6px 4px; }
+  #skinRow { display:flex; align-items:center; gap:8px; }
+  #skinPrev { width:36px; height:36px; image-rendering:pixelated; background:#222 url('') center/cover;
+    border:2px solid #000; box-shadow:inset 0 0 0 2px #4a4a4a; flex:none; }
+  #skinBtn { font-size:11px; padding:6px 8px; }
+
+  /* ---- bottom hotbar (the signature element) ---- */
+  #hotbar { position:fixed; bottom:14px; left:50%; transform:translateX(-50%); z-index:50;
+    display:flex; gap:0; padding:4px; background:rgba(20,18,16,.55);
+    border:2px solid #1f1f1f; box-shadow:inset 0 0 0 2px #555; }
+  .slot { width:50px; height:50px; position:relative; cursor:pointer;
+    image-rendering:pixelated; background-size:cover;
+    box-shadow:inset 2px 2px 0 rgba(255,255,255,.18), inset -2px -2px 0 rgba(0,0,0,.45);
+    border:2px solid #2b2b2b; }
+  .slot.sel { border-color:#fff; box-shadow:inset 0 0 0 2px #fff; z-index:1; }
+  .slot .nm { position:absolute; bottom:1px; left:0; right:0; text-align:center; font-size:8px;
+    color:#fff; text-shadow:1px 1px 0 #000; letter-spacing:0; }
+
+  /* ---- crosshair ---- */
+  #cross { position:fixed; left:50%; top:50%; width:22px; height:22px; transform:translate(-50%,-50%);
+    z-index:15; pointer-events:none; display:none; mix-blend-mode:difference; }
+  #cross::before,#cross::after { content:""; position:absolute; background:#fff; }
+  #cross::before { left:50%; top:0; width:2px; height:100%; transform:translateX(-50%); }
+  #cross::after { top:50%; left:0; height:2px; width:100%; transform:translateY(-50%); }
+
+  /* ---- start / pause overlay ---- */
+  #start { position:fixed; inset:0; z-index:40; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; gap:18px; cursor:pointer;
+    image-rendering:pixelated; }
+  #start .scrim { position:absolute; inset:0; background:rgba(0,0,0,.55); }
+  #start .inner { position:relative; display:flex; flex-direction:column; align-items:center; gap:14px;
+    background:rgba(22,20,18,.7); padding:30px 38px; border:2px solid #000;
+    box-shadow:inset 0 0 0 2px #4a4a4a; }
+  #start h1 { font-size:30px; }
+  #playBtn { font-size:16px; padding:12px 28px; }
+  #keys { font-size:11px; line-height:1.9; color:#d8d8d8; text-shadow:1px 1px 0 #000; text-align:center; }
+  #keys b { color:#fff; }
+  .pill { display:inline-block; background:#2c2c2c; border:1px solid #555; padding:1px 6px; margin:0 2px; }
+
+  /* ---- touch controls ---- */
+  #c { touch-action:none; }
+  .touch-only { display:none; }
+  body.touch .touch-only { display:block; }
+  body.touch .desktop-only { display:none; }
+  #touchUI { position:fixed; inset:0; z-index:30; pointer-events:none; }
+  #joyBase { position:absolute; width:120px; height:120px; border-radius:50%;
+    border:3px solid rgba(255,255,255,.4); background:rgba(0,0,0,.2);
+    transform:translate(-50%,-50%); display:none; }
+  #joyKnob { position:absolute; width:54px; height:54px; border-radius:50%;
+    background:rgba(255,255,255,.6); border:3px solid rgba(255,255,255,.85);
+    transform:translate(-50%,-50%); display:none; }
+  #btnJump { position:absolute; right:26px; bottom:30px; width:86px; height:86px; border-radius:50%;
+    pointer-events:auto; background:rgba(255,255,255,.16); color:#fff; font-weight:bold;
+    border:3px solid rgba(255,255,255,.55); text-shadow:2px 2px 0 #2a2a2a; font-size:13px;
+    font-family:inherit; text-transform:uppercase; letter-spacing:1px; touch-action:none;
+    display:none; }
+  body.touch #btnJump { display:block; }
+  #btnJump:active { background:rgba(120,200,90,.5); }
+  @media (max-width:620px){
+    #panel { max-width:172px; padding:9px; gap:6px; }
+    #panel .row .mc-btn { font-size:10px; padding:5px 2px; min-width:0; }
+    #skinBtn { font-size:10px; padding:5px 6px; }
+    #hotbar { bottom:124px; padding:3px; }
+    .slot { width:36px; height:36px; }
+    .slot .nm { font-size:7px; }
+    #start h1 { font-size:22px; }
+    #start .inner { padding:22px 24px; }
+  }
+</style>
+
+<canvas id="c"></canvas>
+
+<div id="cross"></div>
+
+<div id="panel">
+  <span class="lbl mc-text">World</span>
+  <div class="row" id="worldRow">
+    <button class="mc-btn sel" data-world="hills">Hills</button>
+    <button class="mc-btn" data-world="flat">Flat</button>
+    <button class="mc-btn" data-world="island">Island</button>
+  </div>
+  <span class="lbl mc-text">Character</span>
+  <div id="skinRow">
+    <div id="skinPrev"></div>
+    <button class="mc-btn" id="skinBtn">Load Skin</button>
+    <input type="file" id="skinFile" accept="image/png,image/*" hidden>
+  </div>
+</div>
+
+<div id="hotbar"></div>
+
+<div id="touchUI">
+  <div id="joyBase"></div>
+  <div id="joyKnob"></div>
+  <button id="btnJump">Jump</button>
+</div>
+
+<div id="start">
+  <div class="scrim"></div>
+  <div class="inner">
+    <h1 class="mc-text">Voxel World</h1>
+    <button class="mc-btn" id="playBtn">Click to play</button>
+    <div id="keys">
+      <span class="desktop-only">
+        <b>WASD</b> move &nbsp;·&nbsp; <b>Mouse</b> look &nbsp;·&nbsp; <b>Space</b> jump<br>
+        <span class="pill">Ctrl</span> sprint &nbsp; <span class="pill">Shift</span> sneak (edge-safe) &nbsp; <span class="pill">Esc</span> pause<br>
+      </span>
+      <span class="touch-only">
+        <b>Left stick</b> move (push to rim to sprint)<br>
+        <b>Right side</b> drag to look &nbsp;·&nbsp; <b>Jump</b> button<br>
+      </span>
+      Pick a block below to retexture the whole world.
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+"use strict";
+
+/* ============================================================
+   1. BLOCK TEXTURES  (16x16 procedural pixel art)
+   ============================================================ */
+function tile(draw){
+  const cv=document.createElement('canvas'); cv.width=16; cv.height=16;
+  draw(cv.getContext('2d')); return cv;
+}
+function fill(ctx,c){ ctx.fillStyle=c; ctx.fillRect(0,0,16,16); }
+function p(ctx,x,y,c){ ctx.fillStyle=c; ctx.fillRect(x,y,1,1); }
+function speck(ctx,pal){ for(let y=0;y<16;y++)for(let x=0;x<16;x++){ p(ctx,x,y,pal[(Math.random()*pal.length)|0]); } }
+
+const BLOCKS=[
+  { id:'grass', name:'Grass',
+    top:t=>speck(t,['#6cb33f','#5fa83b','#74bd46','#549a32']),
+    side:t=>{ speck(t,['#8a6240','#7d5838','#946a46','#6e4d30']); // dirt
+      for(let x=0;x<16;x++){ const g=3+((Math.random()*3)|0);
+        for(let y=0;y<g;y++) p(t,x,y, ['#6cb33f','#5fa83b','#549a32'][(Math.random()*3)|0]); } } },
+  { id:'dirt', name:'Dirt',
+    top:t=>speck(t,['#8a6240','#7d5838','#946a46','#6e4d30']),
+    side:t=>speck(t,['#8a6240','#7d5838','#946a46','#6e4d30']) },
+  { id:'stone', name:'Stone',
+    top:t=>speck(t,['#8f8f8f','#828282','#999','#787878']),
+    side:t=>speck(t,['#8f8f8f','#828282','#999','#787878']) },
+  { id:'cobble', name:'Cobble',
+    top:cobble, side:cobble },
+  { id:'brick', name:'Brick',
+    top:brick, side:brick },
+  { id:'sand', name:'Sand',
+    top:t=>speck(t,['#e6d8a8','#ded0a0','#ecdfb2','#d8caa0']),
+    side:t=>speck(t,['#e6d8a8','#ded0a0','#ecdfb2','#d8caa0']) },
+  { id:'planks', name:'Planks',
+    top:planks, side:planks },
+  { id:'snow', name:'Snow',
+    top:t=>speck(t,['#f7f9fb','#eef2f6','#ffffff','#e6ecf2']),
+    side:t=>{ speck(t,['#8a6240','#7d5838','#946a46']); for(let x=0;x<16;x++){ const g=4+((Math.random()*2)|0);
+      for(let y=0;y<g;y++) p(t,x,y,['#f7f9fb','#ffffff','#eef2f6'][(Math.random()*3)|0]); } } },
+];
+function cobble(t){ speck(t,['#7f7f7f','#8b8b8b','#767676']);
+  for(let i=0;i<10;i++){ const cx=(Math.random()*14)|0, cy=(Math.random()*14)|0, s=2+((Math.random()*2)|0);
+    const c=['#9a9a9a','#888','#a4a4a4'][(Math.random()*3)|0];
+    for(let y=0;y<s;y++)for(let x=0;x<s;x++) p(t,cx+x,cy+y,c); }
+  for(let i=0;i<26;i++) p(t,(Math.random()*16)|0,(Math.random()*16)|0,'#565656'); }
+function brick(t){ fill(t,'#9c3f33');
+  for(let y=0;y<16;y++)for(let x=0;x<16;x++) if(Math.random()<.3) p(t,x,y,['#a8473a','#8f372c','#aa4a3c'][(Math.random()*3)|0]);
+  const mortar='#cfc6b8';
+  for(let y=3;y<16;y+=4) for(let x=0;x<16;x++) p(t,x,y,mortar);          // horizontal lines
+  for(let band=0,row=0;band<16;band+=4,row++){ const off=row%2? 0:8;
+    for(let x=(off)%16;x<16;x+=8) for(let y=band;y<band+3&&y<16;y++) p(t,x,y,mortar); } }
+function planks(t){ const tones=['#9c7039','#a87a3f','#916734','#b08245'];
+  for(let y=0;y<16;y++){ const band=(y/4)|0; const base=tones[band%tones.length];
+    for(let x=0;x<16;x++){ p(t,x,y, Math.random()<.18? '#7c5727':base); } }
+  for(let y=3;y<16;y+=4) for(let x=0;x<16;x++) p(t,x,y,'#5f441f');        // plank seams
+  for(let b=0;b<4;b++){ const x=(b*4+2+((Math.random()*2)|0))%16; for(let y=b*4;y<b*4+4;y++) p(t,x,y,'#5f441f'); } }
+
+// cache top tiles for the hotbar icons & atlas tiles for both faces
+const TOP_TILE={}, SIDE_TILE={};
+BLOCKS.forEach(b=>{ TOP_TILE[b.id]=tile(b.top); SIDE_TILE[b.id]=tile(b.side); });
+
+/* ============================================================
+   2. ATLAS  (2 slots: top | side) — redrawn on retexture
+   ============================================================ */
+const atlas=document.createElement('canvas'); atlas.width=32; atlas.height=16;
+const actx=atlas.getContext('2d');
+const atlasTex=new THREE.CanvasTexture(atlas);
+atlasTex.magFilter=THREE.NearestFilter; atlasTex.minFilter=THREE.NearestFilter;
+atlasTex.generateMipmaps=false;
+let activeBlock='grass';
+function paintAtlas(id){
+  actx.clearRect(0,0,32,16);
+  actx.drawImage(TOP_TILE[id],0,0);
+  actx.drawImage(SIDE_TILE[id],16,0);
+  atlasTex.needsUpdate=true;
+}
+paintAtlas(activeBlock);
+
+// UV insets into the two atlas slots
+const tU0=0.5/32, tU1=15.5/32, sU0=16.5/32, sU1=31.5/32, vA=0.5/16, vB=15.5/16;
+
+/* ============================================================
+   3. THREE SETUP
+   ============================================================ */
+const canvas=document.getElementById('c');
+const renderer=new THREE.WebGLRenderer({canvas,antialias:false});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.autoClear=false;
+
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x8fc6ff);
+scene.fog=new THREE.Fog(0x8fc6ff, 40, 90);
+
+const camera=new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.05, 1000);
+camera.rotation.order='YXZ';
+
+// first-person arm rendered in its own overlay scene so it never clips terrain
+const armScene=new THREE.Scene();
+const armCam=new THREE.PerspectiveCamera(70, innerWidth/innerHeight, 0.01, 10);
+const armTex=new THREE.CanvasTexture(makeDefaultArm());
+armTex.magFilter=THREE.NearestFilter; armTex.minFilter=THREE.NearestFilter; armTex.generateMipmaps=false;
+const armMesh=new THREE.Mesh(
+  new THREE.BoxGeometry(0.16,0.62,0.16),
+  new THREE.MeshBasicMaterial({map:armTex}));
+armMesh.position.set(0.34,-0.46,-0.62);
+armMesh.rotation.set(-0.25,-0.1,0.18);
+armScene.add(armMesh);
+
+const worldMat=new THREE.MeshBasicMaterial({map:atlasTex, vertexColors:true, side:THREE.DoubleSide});
+let worldMesh=null;
+
+/* ============================================================
+   4. WORLD GENERATION  (heightmaps)
+   ============================================================ */
+const N=56;                 // world is N x N columns
+let height=new Int16Array(N*N);
+
+function hash2(ix,iz,s){ let h=ix*374761393+iz*668265263+s*982451653;
+  h=(h^(h>>>13)); h=Math.imul(h,1274126177); h^=(h>>>16); return (h>>>0)/4294967296; }
+function vnoise(x,z,s){ const x0=Math.floor(x),z0=Math.floor(z),xf=x-x0,zf=z-z0;
+  const u=xf*xf*(3-2*xf), v=zf*zf*(3-2*zf);
+  const a=hash2(x0,z0,s),b=hash2(x0+1,z0,s),c=hash2(x0,z0+1,s),d=hash2(x0+1,z0+1,s);
+  return (a*(1-u)+b*u)*(1-v)+(c*(1-u)+d*u)*v; }
+function fbm(x,z,s){ let f=0,a=0.5,fr=1; for(let o=0;o<4;o++){ f+=a*vnoise(x*fr,z*fr,s+o*131); fr*=2; a*=0.5; } return f; }
+
+function genWorld(kind){
+  const seed=(Math.random()*100000)|0;
+  const cx=N/2-0.5, cz=N/2-0.5, R=N*0.46;
+  for(let x=0;x<N;x++)for(let z=0;z<N;z++){
+    let h;
+    if(kind==='flat'){ h=4; }
+    else if(kind==='hills'){ h=Math.round(5 + fbm(x/15,z/15,seed)*15); }
+    else { // island
+      const d=Math.hypot(x-cx,z-cz)/R, fall=Math.max(0,1-d);
+      h=Math.round(2 + Math.pow(fall,1.7)*15 + (fbm(x/9,z/9,seed)-0.5)*5);
+      if(d>0.96) h=2;                 // water rim
+    }
+    height[x*N+z]=Math.max(1,h);
+  }
+  buildMesh();
+  respawn();
+}
+
+function topVis(x,z){ if(x<0||x>=N||z<0||z>=N) return 0; return height[x*N+z]; }   // for face culling
+function topCol(x,z){ if(x<0||x>=N||z<0||z>=N) return Infinity; return height[x*N+z]; } // for collision (walls)
+
+function buildMesh(){
+  const pos=[],col=[],uv=[],idx=[]; let vi=0;
+  function quad(c0,c1,c2,c3,b,isTop){
+    [c0,c1,c2,c3].forEach(c=>{ pos.push(c[0],c[1],c[2]); col.push(b,b,b); });
+    const u0=isTop?tU0:sU0, u1=isTop?tU1:sU1;
+    uv.push(u0,vA, u0,vB, u1,vB, u1,vA);
+    idx.push(vi,vi+1,vi+2, vi,vi+2,vi+3); vi+=4;
+  }
+  for(let x=0;x<N;x++)for(let z=0;z<N;z++){
+    const h=height[x*N+z];
+    // top
+    quad([x,h,z],[x,h,z+1],[x+1,h,z+1],[x+1,h,z], 1.0, true);
+    // +X
+    let nh=topVis(x+1,z); for(let y=nh;y<h;y++) quad([x+1,y,z],[x+1,y+1,z],[x+1,y+1,z+1],[x+1,y,z+1],0.8,false);
+    // -X
+    nh=topVis(x-1,z); for(let y=nh;y<h;y++) quad([x,y,z+1],[x,y+1,z+1],[x,y+1,z],[x,y,z],0.8,false);
+    // +Z
+    nh=topVis(x,z+1); for(let y=nh;y<h;y++) quad([x+1,y,z+1],[x+1,y+1,z+1],[x,y+1,z+1],[x,y,z+1],0.62,false);
+    // -Z
+    nh=topVis(x,z-1); for(let y=nh;y<h;y++) quad([x,y,z],[x,y+1,z],[x+1,y+1,z],[x+1,y,z],0.62,false);
+  }
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+  g.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
+  g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));
+  g.setIndex(idx);
+  if(worldMesh){ scene.remove(worldMesh); worldMesh.geometry.dispose(); }
+  worldMesh=new THREE.Mesh(g, worldMat);
+  scene.add(worldMesh);
+}
+
+/* ============================================================
+   5. PLAYER  +  COLLISION  ("run on top, never through")
+   ============================================================ */
+const player={ x:N/2, z:N/2, y:0, vy:0, grounded:false };
+const RAD=0.3, EYE=1.62, GRAV=28, JUMP=8.4, STEP=1.05;
+let yaw=0, pitch=0, walkPhase=0;
+
+function groundAt(px,pz){
+  let g=-Infinity;
+  for(let x=Math.floor(px-RAD);x<=Math.floor(px+RAD);x++)
+    for(let z=Math.floor(pz-RAD);z<=Math.floor(pz+RAD);z++)
+      g=Math.max(g, topCol(x,z));
+  return g; // Infinity if footprint hits world border -> blocked
+}
+function respawn(){
+  player.x=N/2; player.z=N/2; player.vy=0;
+  player.y=Math.max(1,groundAt(player.x,player.z));
+  yaw=0; pitch=0;
+}
+
+const keys={};
+const isTouch = matchMedia('(pointer:coarse)').matches || ('ontouchstart' in window);
+if(isTouch) document.body.classList.add('touch');
+const joy={ f:0, r:0 };        // forward / right axes, -1..1
+let touchJump=false;
+function tryMove(dx,dz,footG,sneak){
+  const nx=player.x+dx, nz=player.z+dz;
+  const gN=groundAt(nx,nz);
+  if(gN===Infinity) return false;            // world edge wall
+  if(gN-player.y>STEP) return false;          // too tall to step -> wall
+  if(sneak && player.grounded && gN<footG-0.5) return false; // sneak = don't walk off ledges
+  player.x=nx; player.z=nz; return true;
+}
+function updatePlayer(dt){
+  // gather input axes from keyboard + touch joystick
+  let inF=0,inR=0;
+  if(keys['KeyW']) inF+=1; if(keys['KeyS']) inF-=1;
+  if(keys['KeyD']) inR+=1; if(keys['KeyA']) inR-=1;
+  inF+=joy.f; inR+=joy.r;
+  let amag=Math.hypot(inF,inR);
+  const tilt=Math.min(1,amag);                 // analog throttle (partial stick = slower)
+  if(amag>1){ inF/=amag; inR/=amag; }
+  const sprint=keys['ControlLeft']||keys['ControlRight']||amag>0.92;
+  const sneak =keys['ShiftLeft']||keys['ShiftRight'];
+  let speed=4.317; if(sprint) speed=5.6; if(sneak) speed=1.6;
+  speed*=tilt;
+
+  // movement direction from camera yaw (horizontal only)
+  const fwd=new THREE.Vector3(); camera.getWorldDirection(fwd); fwd.y=0; fwd.normalize();
+  const right=new THREE.Vector3().crossVectors(fwd,new THREE.Vector3(0,1,0)).normalize();
+  let mx=fwd.x*inF+right.x*inR, mz=fwd.z*inF+right.z*inR;
+  const len=Math.hypot(mx,mz);
+  let moving=false;
+  if(len>0.001){
+    mx/=len; mz/=len; moving=true;
+    const dx=mx*speed*dt, dz=mz*speed*dt;
+    const footG=groundAt(player.x,player.z);
+    if(!tryMove(dx,dz,footG,sneak)){           // blocked -> try sliding along each axis
+      tryMove(dx,0,footG,sneak); tryMove(0,dz,footG,sneak);
+    }
+  }
+
+  // gravity + ground
+  const g=groundAt(player.x,player.z);
+  player.vy-=GRAV*dt;
+  player.y+=player.vy*dt;
+  if(player.y<=g){ player.y=g; player.vy=0; player.grounded=true; }
+  else player.grounded=false;
+  if((keys['Space']||touchJump) && player.grounded){ player.vy=JUMP; player.grounded=false; }
+  if(player.y<-10) respawn();                  // safety net
+
+  // camera follow + subtle head bob
+  if(moving && player.grounded) walkPhase+=dt*speed*1.6; 
+  const bob=(moving&&player.grounded)? Math.sin(walkPhase*2)*0.045 : 0;
+  camera.position.set(player.x, player.y+EYE+bob, player.z);
+  camera.rotation.y=yaw; camera.rotation.x=pitch;
+
+  // arm sway
+  armMesh.position.y=-0.46+bob*0.6;
+  armMesh.rotation.x=-0.25+Math.sin(walkPhase*2)*(moving&&player.grounded?0.06:0)
+                      + (player.vy>1?-0.15:0);
+}
+
+/* ============================================================
+   6. SKIN / ARM
+   ============================================================ */
+function makeDefaultArm(){
+  const cv=document.createElement('canvas'); cv.width=16; cv.height=48;
+  const x=cv.getContext('2d');
+  for(let yy=0;yy<48;yy++)for(let xx=0;xx<16;xx++){
+    const sh=xx<3||xx>12?0.88:1; const base=Math.random()<.15?0.92:1;
+    const r=(0xc9*sh*base)|0, g=(0x8e*sh*base)|0, b=(0x6d*sh*base)|0;
+    x.fillStyle=`rgb(${r},${g},${b})`; x.fillRect(xx,yy,1,1);
+  }
+  x.fillStyle='rgba(70,45,30,.5)'; x.fillRect(0,40,16,8); // hand/cuff hint
+  return cv;
+}
+function loadSkin(file){
+  const img=new Image();
+  img.onload=()=>{
+    const sq=img.height>=img.width;            // 64x64 (or 64x32)
+    const cv=document.createElement('canvas'); cv.width=16; cv.height=48;
+    const x=cv.getContext('2d'); x.imageSmoothingEnabled=false;
+    // right-arm front (44,20,4,12) on the standard skin layout
+    x.drawImage(img,44,20,4,12, 0,0,16,48);
+    if(img.height>=64) x.drawImage(img,44,36,4,12, 0,0,16,48); // overlay layer
+    armTex.image=cv; armTex.needsUpdate=true;
+    // preview = full skin
+    document.getElementById('skinPrev').style.backgroundImage=`url(${img.src})`;
+  };
+  const fr=new FileReader();
+  fr.onload=e=>{ img.src=e.target.result; };
+  fr.readAsDataURL(file);
+}
+
+/* ============================================================
+   7. UI WIRING
+   ============================================================ */
+// hotbar
+const hotbar=document.getElementById('hotbar');
+BLOCKS.forEach(b=>{
+  const s=document.createElement('div'); s.className='slot'+(b.id===activeBlock?' sel':'');
+  s.dataset.id=b.id;
+  s.style.backgroundImage=`url(${TOP_TILE[b.id].toDataURL()})`;
+  s.innerHTML=`<span class="nm">${b.name}</span>`;
+  s.addEventListener('click',()=>{
+    activeBlock=b.id; paintAtlas(b.id);
+    document.querySelectorAll('.slot').forEach(e=>e.classList.toggle('sel',e.dataset.id===b.id));
+  });
+  hotbar.appendChild(s);
+});
+// 1-8 number keys select hotbar slot
+addEventListener('keydown',e=>{
+  const n=parseInt(e.key,10);
+  if(n>=1 && n<=BLOCKS.length){ const b=BLOCKS[n-1]; activeBlock=b.id; paintAtlas(b.id);
+    document.querySelectorAll('.slot').forEach(el=>el.classList.toggle('sel',el.dataset.id===b.id)); }
+});
+
+// world switcher
+let currentWorld='hills';
+document.getElementById('worldRow').addEventListener('click',e=>{
+  const btn=e.target.closest('button'); if(!btn) return;
+  currentWorld=btn.dataset.world;
+  document.querySelectorAll('#worldRow .mc-btn').forEach(b=>b.classList.toggle('sel',b===btn));
+  genWorld(currentWorld);
+});
+
+// skin loader
+document.getElementById('skinBtn').addEventListener('click',()=>document.getElementById('skinFile').click());
+document.getElementById('skinFile').addEventListener('change',e=>{ if(e.target.files[0]) loadSkin(e.target.files[0]); });
+
+/* ============================================================
+   8. POINTER LOCK + INPUT
+   ============================================================ */
+const startEl=document.getElementById('start'), crossEl=document.getElementById('cross');
+const joyBase=document.getElementById('joyBase'), joyKnob=document.getElementById('joyKnob');
+const btnJump=document.getElementById('btnJump');
+let started=false;
+function setStarted(v){
+  started=v;
+  startEl.style.display=v?'none':'flex';
+  crossEl.style.display=v?'block':'none';
+  if(!v){ for(const k in keys) keys[k]=false; joy.f=joy.r=0; touchJump=false;
+          joyTouch=lookTouch=null; joyBase.style.display=joyKnob.style.display='none'; }
+}
+function play(){ if(isTouch) setStarted(true); else canvas.requestPointerLock(); }
+document.getElementById('playBtn').addEventListener('click',e=>{ e.stopPropagation(); play(); });
+startEl.addEventListener('click',play);
+if(isTouch) document.getElementById('playBtn').textContent='Tap to play';
+
+document.addEventListener('pointerlockchange',()=>{
+  if(isTouch) return;
+  setStarted(document.pointerLockElement===canvas);
+});
+addEventListener('mousemove',e=>{
+  if(document.pointerLockElement!==canvas) return;
+  yaw-=e.movementX*0.0024;
+  pitch-=e.movementY*0.0024;
+  pitch=Math.max(-1.55,Math.min(1.55,pitch));
+});
+addEventListener('keydown',e=>{ if(started){ keys[e.code]=true;
+  if(e.code==='Space') e.preventDefault(); } });
+addEventListener('keyup',e=>{ keys[e.code]=false; });
+
+// ---- touch: left-thumb joystick, right-side look, jump button ----
+const JOY_R=52;
+let joyTouch=null, lookTouch=null, lookLast={x:0,y:0}, joyOrigin={x:0,y:0};
+canvas.addEventListener('touchstart',e=>{
+  if(!started) return;
+  for(const t of e.changedTouches){
+    if(t.clientX<innerWidth*0.5 && joyTouch===null){
+      joyTouch=t.identifier; joyOrigin={x:t.clientX,y:t.clientY};
+      joyBase.style.left=joyKnob.style.left=t.clientX+'px';
+      joyBase.style.top =joyKnob.style.top =t.clientY+'px';
+      joyBase.style.display=joyKnob.style.display='block';
+    } else if(lookTouch===null){
+      lookTouch=t.identifier; lookLast={x:t.clientX,y:t.clientY};
+    }
+  }
+  e.preventDefault();
+},{passive:false});
+canvas.addEventListener('touchmove',e=>{
+  if(!started) return;
+  for(const t of e.changedTouches){
+    if(t.identifier===joyTouch){
+      let dx=t.clientX-joyOrigin.x, dy=t.clientY-joyOrigin.y;
+      const m=Math.hypot(dx,dy); if(m>JOY_R){ dx*=JOY_R/m; dy*=JOY_R/m; }
+      joyKnob.style.left=(joyOrigin.x+dx)+'px'; joyKnob.style.top=(joyOrigin.y+dy)+'px';
+      joy.r=dx/JOY_R; joy.f=-dy/JOY_R;           // up on screen = forward
+    } else if(t.identifier===lookTouch){
+      yaw-=(t.clientX-lookLast.x)*0.005;
+      pitch-=(t.clientY-lookLast.y)*0.005;
+      pitch=Math.max(-1.55,Math.min(1.55,pitch));
+      lookLast={x:t.clientX,y:t.clientY};
+    }
+  }
+  e.preventDefault();
+},{passive:false});
+function endTouch(e){
+  for(const t of e.changedTouches){
+    if(t.identifier===joyTouch){ joyTouch=null; joy.f=joy.r=0;
+      joyBase.style.display=joyKnob.style.display='none'; }
+    if(t.identifier===lookTouch) lookTouch=null;
+  }
+}
+canvas.addEventListener('touchend',endTouch);
+canvas.addEventListener('touchcancel',endTouch);
+btnJump.addEventListener('touchstart',e=>{ touchJump=true; e.preventDefault(); },{passive:false});
+btnJump.addEventListener('touchend',  e=>{ touchJump=false; e.preventDefault();},{passive:false});
+
+addEventListener('resize',()=>{
+  camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix();
+  armCam.aspect=innerWidth/innerHeight; armCam.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight);
+});
+
+/* ============================================================
+   9. BOOT + LOOP
+   ============================================================ */
+renderer.setSize(innerWidth,innerHeight);
+genWorld('hills');
+
+let last=performance.now();
+function loop(now){
+  let dt=(now-last)/1000; last=now; dt=Math.min(dt,0.05);
+  updatePlayer(dt);
+  renderer.clear();
+  renderer.render(scene,camera);
+  renderer.clearDepth();
+  renderer.render(armScene,armCam);
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+})();
+</script>
