@@ -1,38 +1,41 @@
-# Voxel World
+# ModJam 2026 Teaser
 
-A single-file, Minecraft-style voxel world that runs in any modern browser. First-person
-controls with gravity, jumping, and surface collision so you always run *on top* of the
-terrain. Built with [three.js](https://threejs.org/) — no build step, no dependencies to install.
+A first-person, Minecraft-style teaser experience that runs in any modern browser.
+Explore a foggy voxel world by torchlight, collect the letters **JULY 21**, and a
+towering T-rex looms out of the mist with a thunderclap. Built with
+[three.js](https://threejs.org/) — no build step, no install.
 
-## Play
+## Structure
 
-Just open `index.html` in a browser, or host it for free with **GitHub Pages**:
+```
+.
+├── index.html   ← the whole experience (three.js + world + logic, all inline)
+└── sfx/         ← audio (ambient music + SFX), loaded at runtime
+```
+
+The audio lives in `sfx/` as separate files (small page, fast load). Because the page
+fetches those files, **it must be served over HTTP — don't open `index.html` by
+double-clicking** (browsers block `file://` fetches, so the SFX won't play locally).
+Use any static server, or just deploy it (below).
+
+## Deploy (Netlify)
+
+It's a static site — no build command, no framework.
 
 1. Push this folder to a GitHub repo.
-2. Repo **Settings → Pages → Build from branch**, pick your branch and `/ (root)`.
-3. Open the published URL.
+2. In Netlify: **Add new site → Import from GitHub**, pick the repo.
+3. Leave **build command** empty and set **publish directory** to `/` (the repo root).
+4. Deploy. That's it.
 
 ## Controls
 
-**Desktop**
-- `WASD` move · mouse look (click to lock) · `Space` jump
-- `Ctrl` sprint · `Shift` sneak (won't walk off ledges) · `Esc` pause
-- `1`–`8` swap the world texture
+**Desktop** — `WASD` move · mouse look (click to lock) · `Space` jump
+**Mobile** — left thumb joystick to move · drag the right side to look · Jump button
 
-**Mobile / touch**
-- Left thumb = joystick (push to the rim to sprint)
-- Drag the right side of the screen to look
-- Jump button, bottom-right
+Sound starts on the first tap/click (browsers require a user gesture for audio); toggle
+it with the **SOUND** control top-right, or the `M` key.
 
-## Features
+## Notes
 
-- **World types** — Hills, Flat, and Island, regenerated procedurally on each pick.
-- **Whole-world retexture** — eight block types (grass, dirt, stone, cobble, brick, sand, planks, snow) from the bottom hotbar.
-- **Skin loader** — load a standard Minecraft skin PNG; its right arm shows as your first-person arm.
-- Procedural pixel-art textures generated at runtime, so there are no external assets.
-
-## Tech notes
-
-Everything lives in `index.html`: heightmap world generation, a merged-geometry mesh
-with a 2-slot texture atlas, axis-resolved surface collision with auto-step and edge
-walls, and a separate overlay pass for the first-person arm. three.js is loaded from a CDN.
+- Everything is in `index.html`; the only external files are in `sfx/`.
+- three.js is bundled inline, so there are no other dependencies.

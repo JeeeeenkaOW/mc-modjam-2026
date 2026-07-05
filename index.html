@@ -69,18 +69,20 @@
   @media (max-width:620px){ #logo { width:140px; top:16px; } }
   body.touch #logo { left:12px; transform:none; }   /* mobile: logo to the top-left, paired with the sound button on the right */
 
-  /* ---- control hint: small pixel-font panel, bottom-right, fades once the player moves (WASD/jump) ---- */
-  #hint { position:fixed; right:16px; bottom:16px; z-index:20; pointer-events:none; text-align:left;
-    font-family:'PixelMC',"Courier New",monospace; font-size:16px; line-height:1.55; color:#d8d8d8;
-    letter-spacing:1px; text-shadow:1px 1px 0 rgba(0,0,0,.6); white-space:nowrap;
-    background:rgba(34,36,34,.4); padding:8px 12px; width:158px; box-sizing:border-box;
-    opacity:1; transition:opacity 1.4s ease; will-change:opacity; }
+  /* ---- controls overlay: centered card shown on load, fades on first click/tap anywhere ---- */
+  #hint { position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); z-index:20; pointer-events:none;
+    width:262px; box-sizing:border-box; padding:18px 24px 26px;
+    background:rgba(0,0,0,.4); box-shadow:4px 4px 0 rgba(0,0,0,.5);
+    font-family:'PixelMC',"Courier New",monospace; text-align:center; letter-spacing:1.67px;
+    opacity:1; transition:opacity .6s ease; will-change:opacity; }
   #hint.gone { opacity:0; }
-  #hint .hrow { display:flex; column-gap:8px; justify-content:flex-start; }
-  #hint .hk { color:#c4c4c4; min-width:3.6em; } #hint .hv { color:#f2f2f2; }
-  /* on touch the jump button owns the bottom-right, so move the hint clear of it, to the top-left */
-  body.touch #hint { right:auto; bottom:auto; top:66px; left:50%; transform:translateX(-50%); width:auto; }   /* centered below the logo+sound row; auto width = symmetric padding (no right-side cutoff) */
-  @media (max-width:620px){ #hint { font-size:14px; padding:7px 10px; width:140px; } #hint .hrow{ column-gap:6px; } #hint .hk{ min-width:3.4em; } }
+  #hint .x { position:absolute; top:12px; right:16px; font-family:Arial,sans-serif; font-size:17px; line-height:1; letter-spacing:0; color:#9f9f9f; }
+  #hint .title { color:#fff; font-size:24px; text-shadow:2px 2px 0 rgba(0,0,0,.5); }
+  #hint .rows { margin-top:14px; font-size:17px; line-height:1.75; color:#d7d7d7; text-shadow:2px 2px 0 rgba(0,0,0,.35); }
+  #hint .hrow { display:flex; justify-content:center; column-gap:8px; }
+  #hint .divider { height:3px; background:#9f9f9f; opacity:.2; margin:16px 2px; }
+  #hint .blurb { color:#d7d7d7; font-size:18px; line-height:1.4; text-shadow:2px 2px 0 rgba(0,0,0,.35); }
+  @media (max-width:620px){ #hint { width:236px; padding:16px 20px 22px; } #hint .title{ font-size:21px; } #hint .rows{ font-size:15px; } #hint .blurb{ font-size:16px; } }
 
   /* ---- sound controller: same panel width & font as the control hint ---- */
   #sound { position:fixed; top:24px; right:16px; z-index:24; cursor:pointer; pointer-events:auto;
@@ -204,16 +206,22 @@
 <div id="cross"></div>
 <div id="torchFog"></div>
 <div id="hint">
-  <div class="desktop-only">
-    <div class="hrow"><span class="hk">MOVE:</span><span class="hv">WASD</span></div>
-    <div class="hrow"><span class="hk">JUMP:</span><span class="hv">SPACE</span></div>
-    <div class="hrow"><span class="hk">LOOK:</span><span class="hv">MOUSE</span></div>
+  <span class="x">✕</span>
+  <div class="title">CONTROLS</div>
+  <div class="rows">
+    <div class="desktop-only">
+      <div class="hrow"><span class="hk">MOVE:</span><span class="hv">WASD</span></div>
+      <div class="hrow"><span class="hk">JUMP:</span><span class="hv">SPACE</span></div>
+      <div class="hrow"><span class="hk">LOOK:</span><span class="hv">MOUSE</span></div>
+    </div>
+    <div class="touch-only">
+      <div class="hrow"><span class="hk">MOVE:</span><span class="hv">JOYSTICK</span></div>
+      <div class="hrow"><span class="hk">JUMP:</span><span class="hv">BUTTON</span></div>
+      <div class="hrow"><span class="hk">LOOK:</span><span class="hv">DRAG</span></div>
+    </div>
   </div>
-  <div class="touch-only">
-    <div class="hrow"><span class="hk">MOVE:</span><span class="hv">JOYSTICK</span></div>
-    <div class="hrow"><span class="hk">JUMP:</span><span class="hv">BUTTON</span></div>
-    <div class="hrow"><span class="hk">LOOK:</span><span class="hv">DRAG</span></div>
-  </div>
+  <div class="divider"></div>
+  <div class="blurb">Find the six letters<br>lost in the fog</div>
 </div>
 <div id="letterbar"></div>
 <div id="revealMsg">stay tuned...</div>
@@ -5220,7 +5228,7 @@ function updatePlayer(dt){
   const len=Math.hypot(mx,mz);
   let moving=false;
   if(len>0.001){
-    mx/=len; mz/=len; moving=true; fadeHint();
+    mx/=len; mz/=len; moving=true;
     const dx=mx*speed*dt, dz=mz*speed*dt;
     const footG=groundAt(player.x,player.z);
     if(!tryMove(dx,dz,footG,sneak)){           // blocked -> try sliding along each axis
@@ -5277,6 +5285,7 @@ const joyBase=document.getElementById('joyBase'), joyKnob=document.getElementByI
 const btnJump=document.getElementById('btnJump');
 const hintEl=document.getElementById('hint'); let hintGone=false;
 function fadeHint(){ if(hintGone) return; hintGone=true; if(hintEl) hintEl.classList.add('gone'); }
+addEventListener('pointerdown', fadeHint);   // the control hint dismisses on the first click / tap
 let started=false;
 function setStarted(v){
   started=v;
@@ -5300,10 +5309,8 @@ addEventListener('mousemove',e=>{
   pitch-=e.movementY*0.0024;
   pitch=Math.max(-1.55,Math.min(1.55,pitch));
 });
-const MOVE_KEYS=new Set(['KeyW','KeyA','KeyS','KeyD','Space']);
 addEventListener('keydown',e=>{ Sound.unlock();   // first keypress resumes/creates the audio context
   if(started){ keys[e.code]=true;
-  if(MOVE_KEYS.has(e.code)) fadeHint();     // hint dismisses only when the player actually moves/jumps
   if(e.code==='Space') e.preventDefault(); } });
 addEventListener('keyup',e=>{ keys[e.code]=false; });
 
@@ -5333,7 +5340,6 @@ canvas.addEventListener('touchmove',e=>{
       const m=Math.hypot(dx,dy); if(m>JOY_R){ dx*=JOY_R/m; dy*=JOY_R/m; }
       joyKnob.style.left=(joyOrigin.x+dx)+'px'; joyKnob.style.top=(joyOrigin.y+dy)+'px';
       joy.r=dx/JOY_R; joy.f=-dy/JOY_R;           // up on screen = forward
-      if(Math.hypot(dx,dy)>6) fadeHint();        // hint dismisses on actual movement, not on look-drag
     } else if(t.identifier===lookTouch){
       yaw-=(t.clientX-lookLast.x)*0.006;
       pitch-=(t.clientY-lookLast.y)*0.006;
@@ -5352,7 +5358,7 @@ function endTouch(e){
 }
 canvas.addEventListener('touchend',endTouch);
 canvas.addEventListener('touchcancel',endTouch);
-btnJump.addEventListener('touchstart',e=>{ Sound.unlock(); touchJump=true; fadeHint(); e.preventDefault(); },{passive:false});
+btnJump.addEventListener('touchstart',e=>{ Sound.unlock(); touchJump=true; e.preventDefault(); },{passive:false});
 btnJump.addEventListener('touchend',  e=>{ touchJump=false; e.preventDefault();},{passive:false});
 
 // keep a usable field of view on any aspect. THREE's `fov` is VERTICAL, so a tall/narrow phone in
