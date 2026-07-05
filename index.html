@@ -5395,34 +5395,39 @@ function b64ToURL(uri,mime){ return URL.createObjectURL(new Blob([b64ToBuf(uri)]
 // and its gain controls volume even on iOS (where <audio>.volume is ignored). Ambient stays a streamed
 // <audio> element (low memory for the long track).
 const Sound = {
-  on:true, ctx:null, master:null, buf:{}, steps:[], ambientEl:null, _ready:false, _ambientStarted:false,
+  on:true, ctx:null, master:null, buf:{}, steps:[], ambientEl:null, _inited:false, _ambientStarted:false,
   _loadBuf(src,cb){ if(!src||!this.ctx) return;
     if(isData(src)){ try{ this.ctx.decodeAudioData(b64ToBuf(src), cb, ()=>{}); }catch(e){} }
     else { fetch(src).then(r=>r.arrayBuffer()).then(ab=>this.ctx.decodeAudioData(ab,cb,()=>{})).catch(()=>{}); }
   },
+  // Create the context + decode every clip. Called from the first gesture: decoding while the context
+  // is still suspended (pre-gesture) does NOT reliably complete, so we do it here, right before we
+  // resume the context. The clips are tiny after compression, so this finishes almost instantly.
   _init(){
+    if(this._inited) return; this._inited=true;
     try{ const AC=window.AudioContext||window.webkitAudioContext;
       if(AC){ this.ctx=new AC(); this.master=this.ctx.createGain(); this.master.gain.value=this.on?1:0; this.master.connect(this.ctx.destination);
+        if(this.ctx.state!=='running') this.ctx.resume().catch(()=>{});
+        SND_STEPS.forEach((u,i)=> this._loadBuf(u, b=>{ this.steps[i]=b; }));   // steps first — they fire most often
         for(const k in SND_FILES){ if(k==='ambient') continue; this._loadBuf(SND_FILES[k], b=>{ this.buf[k]=b; }); }
-        SND_STEPS.forEach((u,i)=> this._loadBuf(u, b=>{ this.steps[i]=b; }));
       }
     }catch(e){}
     try{ if(SND_FILES.ambient){ this.ambientEl=new Audio(isData(SND_FILES.ambient)?b64ToURL(SND_FILES.ambient):SND_FILES.ambient); this.ambientEl.loop=true; this.ambientEl.volume=SND_VOL.ambient; } }catch(e){}
   },
   unlock(){   // must be called synchronously from a user gesture
-    if(!this._ready){ this._ready=true; this._init(); }
+    this._init();
     try{ if(this.ctx){ if(this.ctx.state!=='running') this.ctx.resume().catch(()=>{});
       const b=this.ctx.createBuffer(1,1,22050), s=this.ctx.createBufferSource(); s.buffer=b; s.connect(this.ctx.destination); s.start(0); } }catch(e){}
     this.startAmbient();
   },
   _play(buf,vol){ if(!this.on||!this.ctx||!buf) return; try{ const s=this.ctx.createBufferSource(); s.buffer=buf; const g=this.ctx.createGain(); g.gain.value=vol; s.connect(g); g.connect(this.master); s.start(0); }catch(e){} },
   play(name){ this._play(this.buf[name], SND_VOL[name]!=null?SND_VOL[name]:1); },
-  step(){ if(!this.steps.length) return; this._play(this.steps[(Math.random()*this.steps.length)|0], SND_VOL.step); },
+  step(){ const r=this.steps.filter(Boolean); if(!r.length) return; this._play(r[(Math.random()*r.length)|0], SND_VOL.step); },  // pick only among clips that finished decoding
   startAmbient(){ if(this._ambientStarted||!this.ambientEl) return; this._ambientStarted=true; if(this.on) this.ambientEl.play().catch(()=>{}); },
   setEnabled(v){ this.on=v; if(this.master) this.master.gain.value=v?1:0; if(this.ambientEl){ if(v){ if(this._ambientStarted) this.ambientEl.play().catch(()=>{}); } else this.ambientEl.pause(); } },
   toggle(){ this.setEnabled(!this.on); return this.on; },
 };
-// (no load-time audio setup — the first gesture, via Sound.unlock() in the input handlers, creates + starts everything)
+// audio is created + decoded on the first user gesture (Sound.unlock), wired into the input handlers below
 
 const soundEl=document.getElementById('sound'), soundState=document.getElementById('soundState');
 function renderSound(){ soundEl.classList.toggle('muted',!Sound.on); soundState.textContent=Sound.on?'ON':'OFF'; }
